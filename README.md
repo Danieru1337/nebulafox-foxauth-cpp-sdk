@@ -1,4 +1,4 @@
-# NebulaFox Native C++ SDK
+# NebulaFox FoxAuth Native C++ SDK
 
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-purple.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20x64-lightgrey.svg)
