@@ -81,7 +81,7 @@ int main() {
 
 
     // 1. Initialize the SDK (paste your App Secret from the dashboard here)
-    std::string appSecret = SK_A("NBL-80889383e3be32feb5dbc5e899867e5c");
+    std::string appSecret = SK_A("APP_SECRET");
     NebulaFox::Initialize(appSecret);
     WipeString(appSecret);
 
