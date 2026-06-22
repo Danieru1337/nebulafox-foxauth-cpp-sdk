@@ -1,96 +1,129 @@
 # NebulaFox FoxAuth Native C++ SDK
 
-![C++17](https://img.shields.io/badge/C%2B%2B-17-purple.svg)
-![Platform](https://img.shields.io/badge/Platform-Windows%20x64-lightgrey.svg)
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-purple.svg)]()
+[![Platform](https://img.shields.io/badge/Platform-Windows%20x64-lightgrey.svg)]()
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)]()
 
-**NebulaFox** (FoxAuth) is an enterprise-grade SaaS Licensing and Software Protection platform. This repository contains the official C++ SDK documentation and integration examples for developers.
+NebulaFox (FoxAuth) - платформа для лицензирования
+и защиты программного обеспечения. Этот репозиторий содержит официальный
+C++ SDK и примеры интеграции для разработчиков.
 
-## 🛡️ Security Architecture
+## Shield Architecture
 
-Our SDK is built to prevent reverse-engineering and unauthorized access:
+SDK построен для противодействия реверс-инжинирингу и несанкционированному доступу:
 
-* **Stateful Sessions:** Session objects are protected by FNV1a cryptographic hashes to prevent memory tampering.
-* **Built-in Cryptography:** Server responses are signed with ECDSA P-256 and include a random AES-256 key. Payloads are decrypted directly in RAM.
-* **Replay Protection:** The SDK generates a random cryptographic nonce per request to prevent local server emulation.
-* **SSL Pinning:** Prevents MITM attacks by verifying the SSL certificate's public key hash.
+- **Stateful Sessions:** Объекты сессий защищены криптографическими хешами
+  FNV1a для предотвращения модификации в памяти.
+- **Встроенная криптография:** Ответы сервера подписываются ECDSA P-256,
+  payload расшифровывается AES-256 прямо в RAM.
+- **Replay Protection:** SDK генерирует уникальный криптографический nonce
+  на каждый запрос, исключая эмуляцию локального сервера.
+- **SSL Pinning:** Верификация публичного ключа SSL-сертификата защищает
+  от MITM-атак.
 
-## ☁️ Data-Driven Security (Cloud Payload)
+## Cloud Payload
 
-NebulaFox provides a unique **Cloud Payload** system. You can remove critical variables (offsets, decryption seeds, API tokens) from your application's source code and store them securely on our servers.
+NebulaFox предоставляет систему **Cloud Payload** - ключевая идея которой
+в том, что секретные данные вашего приложения никогда не хранятся внутри
+исполняемого файла. Они зашифрованы на серверах NebulaFox и расшифровываются
+прямо в RAM клиента только после успешной верификации лицензионного ключа
+и HWID устройства. Без валидной лицензии - данные недоступны физически.
 
-### Utility: Convert Struct to HEX for Dashboard
+Типичные сценарии использования:
 
-The server expects data in HEX format. Because of the little-endian architecture, bytes in memory are stored in reverse order. Use this snippet to get the correct HEX string for the NebulaFox dashboard:
+- **Серийный ключ или токен стороннего API** (OpenAI, платежный шлюз, и т.д.),
+  который не должен быть виден в бинарнике
+- **Мастер-ключ шифрования** для расшифровки локальной базы данных приложения
+- **Приватный endpoint** вашего backend-сервера, скрытый от анализа трафика
+- **Флаги функций** и лимиты, привязанные к конкретному тарифному плану
+
+### Утилита: конвертация структуры в HEX для дашборда
+
+Сервер ожидает данные в HEX-формате. Из-за little-endian архитектуры
+байты в памяти хранятся в обратном порядке. Используйте этот сниппет,
+чтобы получить корректную HEX-строку для вставки в дашборд NebulaFox:
 
 ```cpp
 void PrintHexForDashboard(const void* data, size_t size) {
     const BYTE* bytes = static_cast<const BYTE*>(data);
     for (size_t i = 0; i < size; i++) {
-        std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)bytes[i];
+        std::cout << std::hex << std::setw(2)
+                  << std::setfill('0') << (int)bytes[i];
     }
     std::cout << std::dec << std::endl;
 }
 ```
 
-## 🚀 Quick Start & Integration
+## Quick Start
 
-### Requirements
+### Требования
 
-* **Compiler:** Set to x64 (x86 architecture is not supported).
-* **Include:** Add `NebulaFox.h` and link `sdk.lib` in your linker settings.
+- **Компилятор:** только x64 (x86 не поддерживается).
+- **Подключение:** добавьте `NebulaFox.h` и слинкуйте `sdk.lib`.
 
-### Example: Struct Extraction (Strict Size Control)
+### Пример: доставка секретных данных через Cloud Payload
 
-The most secure method for integration. Describe your configuration struct and retrieve it entirely from the secure session.
+Структура `AppSecrets` описывает данные, которые никогда не попадают
+в бинарник. Они хранятся зашифрованными на сервере и передаются в память
+процесса только после успешной проверки лицензии и идентификатора устройства.
 
 ```cpp
 #include <iostream>
 #include "NebulaFox.h"
 
+// Секретные данные, доставляемые в RAM только после верификации лицензии.
+// Этой структуры не существует в бинарнике до момента успешного OpenSession.
 #pragma pack(push, 1)
-struct CloudConfig {
-    DWORD healthOffset;
-    DWORD ammoOffset;
-    float damageMultiplier;
-    bool  enablePremium;
+struct AppSecrets {
+    char apiKey[64];        // API-ключ стороннего сервиса (например, платежный шлюз)
+    char backendUrl[128];   // Приватный URL вашего backend, скрытый от анализа
+    char encryptionKey[32]; // Мастер-ключ AES для расшифровки локальных данных
 };
 #pragma pack(pop)
 
 int main() {
-    // 1. Initialize with your App Secret
-    NebulaFox::Initialize("NBL-App_Secret");
+    // 1. Инициализация с App Secret вашего проекта
+    NebulaFox::Initialize("NBL-Your_App_Secret");
     NebulaFox::Session userSession;
-    std::string userKey = "YOUR-LICENSE-KEY";
+    std::string licenseKey = "YOUR-LICENSE-KEY";
 
-    // 2. Open secure session
-    if (NebulaFox::OpenSession(userKey, &userSession)) {
-        CloudConfig cfg;
+    // 2. Верификация лицензии и открытие защищённой сессии
+    if (NebulaFox::OpenSession(licenseKey, &userSession)) {
 
-        // 3. Extract Cloud Payload with strict size matching
-        if (NebulaFox::GetCloudPayload(userSession, &cfg, sizeof(cfg))) {
-            std::cout << "Health Offset: " << std::hex << cfg.healthOffset << std::endl;
+        // 3. Расшифровка и получение секретов из Cloud Payload
+        // До этого момента данные существуют только на сервере NebulaFox
+        AppSecrets secrets;
+        if (NebulaFox::GetCloudPayload(userSession, &secrets, sizeof(secrets))) {
+            std::cout << "Backend URL: " << secrets.backendUrl << std::endl;
+            // Используйте secrets.apiKey, secrets.encryptionKey и т.д.
+            // ...
+
         } else {
-            std::cout << "Error: Payload size mismatch!" << std::endl;
+            std::cout << "Error: payload size mismatch." << std::endl;
         }
 
-        // 4. Mandatory: Securely close session (wipes decrypted memory)
+        // 4. Обязателен: SecureZeroMemory затирает секреты из RAM после работы
         NebulaFox::CloseSession(userSession);
+
     } else {
-        std::cout << "Error: " << NebulaFox::GetLastSessionError(userSession) << std::endl;
+        std::cout << "License error: "
+                  << NebulaFox::GetLastSessionError(userSession) << std::endl;
     }
 
     return 0;
 }
 ```
 
-## 📚 API Reference
+## API Reference
 
-| Function | Description |
+| Функция | Описание |
 |---|---|
-| `OpenSession(key, &session)` | Sends a network request, verifies the response, and opens a session. |
-| `HasCloudPayload(session)` | Checks if the active session contains an encrypted Cloud Payload. |
-| `GetCloudPayload(session, buffer, size)` | Copies the payload into your buffer with strict size validation. |
-| `GetLastSessionError(session)` | Returns the error string (e.g., `invalid_key` or `hwid_mismatch`). |
-| `GetSessionExpires(session)` | Returns the subscription expiration date (`YYYY-MM-DD HH:MM:SS`). |
-| `CloseSession(session)` | Mandatory. Uses `SecureZeroMemory` to wipe decrypted data inside the object to protect against memory dumping. |
+| `OpenSession(key, &session)` | Верифицирует лицензионный ключ и открывает сессию |
+| `HasCloudPayload(session)` | Проверяет наличие Cloud Payload в активной сессии |
+| `GetCloudPayload(session, buf, size)` | Копирует payload в буфер со строгой проверкой размера |
+| `GetLastSessionError(session)` | Возвращает код ошибки (`invalid_key`, `hwid_mismatch` и др.) |
+| `GetSessionExpires(session)` | Дата истечения подписки (`YYYY-MM-DD HH:MM:SS`) |
+
+## Лицензия
+
+MIT - см. файл [LICENSE](LICENSE).
